@@ -12,6 +12,12 @@ pub struct Stru {
 	val  int
 	val2 string
 	val3 Stru2
+	val4 int
+	val5 int
+	val6 int
+	val7 int
+	val8 int
+	val9 int
 }
 
 pub struct Stru2 {
@@ -48,9 +54,21 @@ mut:
 }
 
 fn main() {
-	json_data := '{"_type": "Stru", "val": 1, "val2": "lala", "val3": {"a": 2, "churrasco": "leleu"}}'
+	json_data := '{"_type": "Stru", "val": 1, "val2": "lala", "val3": {"a": 2, "churrasco": "leleu"}, "val4": 2147483000, "val5": 2147483000, "val6": 2147483000, "val7": 2147483000, "val8": 2147483000, "val9": 2147483000}'
 	json_data1 := '{"val": "2"}'
 	json_data2 := '{"val": 2}'
+	json_data_timestamp := '{"val": "2022-03-11T13:54:25Z"}'
+
+	mut http_request := 'HTTP/1.1 200 OK\r\n'
+	http_request += 'Content-Type: application/json\r\n'
+	http_request += 'Host: localhost:8080\r\n'
+	http_request += 'User-Agent: curl/7.68.0\r\n'
+	http_request += 'Accept: */*\r\n'
+	http_request += 'Connection: close\r\n'
+	http_request += 'Content-Length: ${json_data.len}\r\n'
+	http_request += '\r\n'
+	body_position := http_request.len
+	http_request += json_data // pos: 150
 
 	println('Starting benchmark...')
 	println('max_iterations: ${max_iterations}')
@@ -83,6 +101,14 @@ fn main() {
 	}
 
 	b.measure('old_json.decode(SumTypes, json_data)!\n')
+
+	// time.Time **********************************************************
+
+	for i := 0; i < max_iterations; i++ {
+		_ := decoder2.decode[StructType[time.Time]](json_data_timestamp)!
+	}
+
+	b.measure('decoder2.decode[StructType[time.Time]](json_data_timestamp)!')
 
 	// StructType[string] **********************************************************
 	for i := 0; i < max_iterations; i++ {
@@ -170,10 +196,10 @@ fn main() {
 
 	// time.Time **********************************************************
 	for i := 0; i < max_iterations; i++ {
-		_ := decoder2.decode[time.Time]('"2022-03-11T13:54:25"')!
+		_ := decoder2.decode[time.Time]('"2022-03-11T13:54:25Z"')!
 	}
 
-	b.measure("decoder2.decode[time.Time]('2022-03-11T13:54:25')!")
+	b.measure("decoder2.decode[time.Time]('2022-03-11T13:54:25Z')!")
 
 	// string **********************************************************
 	for i := 0; i < max_iterations; i++ {
@@ -211,4 +237,35 @@ fn main() {
 	}
 
 	b.measure('decoder2.decode[SumTypes](\'"abcdefghijklimnopqrstuv"\')!')
+
+	// // Uncomment this when #22710 is fixed
+	// for i := 0; i < max_iterations; i++ {
+	// 	_ := decoder2.decode[json2.Any](json_data2)!
+	// }
+
+	// b.measure('decoder2.decode[json2.Any](json_data)!')
+
+	for i := 0; i < max_iterations; i++ {
+		mut decoder := decoder2.Decoder{
+			json_str: unsafe { http_request.str + body_position }
+			json_len: json_data.len
+		}
+
+		decoder.check_json_format()!
+		decoder2.check_if_json_match[Stru](json_data)!
+
+		mut result := Stru{}
+		decoder.current_node = decoder.values_info.head
+		decoder.decode_value(mut &result)!
+	}
+
+	b.measure('raw decode from HTTP request')
+
+	for i := 0; i < max_iterations; i++ {
+		json_string_from_http_request := http_request[body_position..]
+
+		_ := decoder2.decode[Stru](json_string_from_http_request)!
+	}
+
+	b.measure('decode from HTTP request')
 }
